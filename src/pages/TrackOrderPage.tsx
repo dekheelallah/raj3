@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Alert } from '../components/Alert'
 import { PrimaryButton } from '../components/PrimaryButton'
-import { findStoredOrder } from '../lib/orderUtils'
+import { findDeliveryRequestByOrderNumber } from '../lib/deliveryRequestsApi'
 import { orderStatusLabels } from '../lib/orderStatus'
 import { isValidOrderNumber } from '../lib/validation'
 import type { OrderStatus } from '../types/site'
@@ -11,8 +11,9 @@ export function TrackOrderPage() {
   const [status, setStatus] = useState<OrderStatus | null>(null)
   const [error, setError] = useState('')
   const [foundOrderInfo, setFoundOrderInfo] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
     if (!isValidOrderNumber(orderNumber)) {
@@ -22,20 +23,25 @@ export function TrackOrderPage() {
       return
     }
 
-    const storedOrder = findStoredOrder(orderNumber.trim())
-
-    if (!storedOrder) {
+    try {
+      setIsLoading(true)
+      setError('')
       setStatus(null)
       setFoundOrderInfo('')
-      setError('لم يتم العثور على هذا الطلب في التخزين المؤقت لهذا المتصفح.')
-      return
-    }
 
-    setError('')
-    setStatus('pending')
-    setFoundOrderInfo(
-      `من ${storedOrder.pickupArea} إلى ${storedOrder.dropoffArea} — العملة ${storedOrder.currency}`,
-    )
+      const storedOrder = await findDeliveryRequestByOrderNumber(orderNumber.trim())
+
+      setStatus(storedOrder.status as OrderStatus)
+      setFoundOrderInfo(
+        `من ${storedOrder.pickup_area} إلى ${storedOrder.dropoff_area} — العملة ${storedOrder.currency}`,
+      )
+    } catch {
+      setStatus(null)
+      setFoundOrderInfo('')
+      setError('لم يتم العثور على هذا الطلب في قاعدة البيانات.')
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -51,7 +57,7 @@ export function TrackOrderPage() {
           </h1>
 
           <p className="mt-4 leading-8 text-slate-300">
-            أدخل رقم طلب تم إنشاؤه من صفحة طلب التوصيل. البحث الآن يتم داخل التخزين المؤقت في هذا المتصفح فقط.
+            أدخل رقم طلب تم إنشاؤه من صفحة طلب التوصيل. البحث الآن يتم من قاعدة بيانات Supabase.
           </p>
 
           <form onSubmit={handleSubmit} className="mt-8 space-y-4">
@@ -80,17 +86,19 @@ export function TrackOrderPage() {
             </div>
 
             <div className="pt-2">
-              <PrimaryButton>تتبع الطلب</PrimaryButton>
+              <PrimaryButton disabled={isLoading}>
+                {isLoading ? 'جاري البحث...' : 'تتبع الطلب'}
+              </PrimaryButton>
             </div>
           </form>
 
           <div className="mt-8">
             <Alert
               variant={status ? 'success' : 'info'}
-              title={status ? orderStatusLabels[status] : 'بانتظار إدخال رقم طلب محفوظ'}
+              title={status ? orderStatusLabels[status] : 'بانتظار إدخال رقم طلب'}
               description={
                 foundOrderInfo ||
-                'هذه ليست بيانات حقيقية من خادم بعد. لا نعتبر التتبع جاهزًا تجاريًا إلا بعد وجود قاعدة بيانات ونظام طلبات فعلي.'
+                'البيانات الآن تقرأ من Supabase، لكن لا يزال النظام بدون تسجيل دخول وصلاحيات نهائية.'
               }
             />
           </div>

@@ -3,14 +3,15 @@ import { Alert } from '../components/Alert'
 import { PhoneInput } from '../components/PhoneInput'
 import { PrimaryButton } from '../components/PrimaryButton'
 import { appConfig } from '../lib/config'
+import { createDeliveryRequest } from '../lib/deliveryRequestsApi'
 import { kuwaitAreas } from '../lib/kuwaitAreas'
-import { generateOrderNumber, saveOrder } from '../lib/orderUtils'
 import { isKuwaitiPhoneNumber } from '../lib/validation'
 import type { DeliveryRequest } from '../types/site'
 
 export function DeliveryRequestPage() {
   const [createdOrderNumber, setCreatedOrderNumber] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const [deliveryRequest, setDeliveryRequest] = useState<DeliveryRequest>({
     pickupArea: '',
@@ -24,7 +25,7 @@ export function DeliveryRequestPage() {
     deliveryRequest.receiverPhone !== '' &&
     !isKuwaitiPhoneNumber(deliveryRequest.receiverPhone)
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
     if (
@@ -44,16 +45,19 @@ export function DeliveryRequestPage() {
       return
     }
 
-    const orderNumber = generateOrderNumber()
+    try {
+      setIsSubmitting(true)
+      setErrorMessage('')
 
-    saveOrder({
-      ...deliveryRequest,
-      orderNumber,
-      createdAt: new Date().toISOString(),
-    })
+      const createdOrder = await createDeliveryRequest(deliveryRequest)
 
-    setErrorMessage('')
-    setCreatedOrderNumber(orderNumber)
+      setCreatedOrderNumber(createdOrder.order_number)
+    } catch {
+      setCreatedOrderNumber('')
+      setErrorMessage('تعذر حفظ الطلب في قاعدة البيانات. تأكد من إعدادات Supabase.')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -166,8 +170,8 @@ export function DeliveryRequestPage() {
             </div>
 
             <div className="pt-2 md:col-span-2">
-              <PrimaryButton disabled={isReceiverPhoneInvalid}>
-                إرسال الطلب
+              <PrimaryButton disabled={isReceiverPhoneInvalid || isSubmitting}>
+                {isSubmitting ? 'جاري إرسال الطلب...' : 'إرسال الطلب'}
               </PrimaryButton>
             </div>
           </form>
@@ -186,8 +190,8 @@ export function DeliveryRequestPage() {
             <div className="mt-6">
               <Alert
                 variant="success"
-                title={`تم إنشاء وحفظ طلب تجريبي: ${createdOrderNumber}`}
-                description="تم حفظ الطلب مؤقتًا في المتصفح فقط. هذا ليس بديلًا عن قاعدة بيانات حقيقية."
+                title={`تم إنشاء وحفظ الطلب: ${createdOrderNumber}`}
+                description="تم حفظ الطلب الآن في Supabase. هذه خطوة أقرب للنظام الحقيقي، لكنها لا تزال بدون تسجيل دخول أو صلاحيات نهائية."
               />
             </div>
           )}
